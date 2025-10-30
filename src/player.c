@@ -266,11 +266,16 @@ static position_t get_intelligent_move(player_t *player) {
 	return result;
 }
 
-void player_game_loop(player_t *player) {
+void player_game_loop(player_t *player, int display_mode) {
 	int move_counter = 0;
 	int killed = 0;
 
 	while (!player->game_state->game_over && !killed) {
+		// Display board periodically if display mode is enabled
+		if (display_mode && (move_counter % 2 == 0)) {
+			display_board(player->game_state, player->sem_id);
+		}
+
 		if (check_kill_condition(player)) {
 			sem_lock(player->sem_id, SEM_BOARD);
 			player->game_state->total_kills++;
@@ -298,6 +303,11 @@ void player_game_loop(player_t *player) {
 		}
 
 		usleep(500000);
+	}
+
+	// Display final board state if display mode is enabled
+	if (display_mode) {
+		display_board(player->game_state, player->sem_id);
 	}
 
 	if (player->game_state->game_over) {

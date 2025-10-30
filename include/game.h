@@ -89,6 +89,6 @@ void remove_player(player_t *player);
 int is_game_over(game_state_t *game_state);
 void sem_lock(int sem_id, int sem_num);
 void sem_unlock(int sem_id, int sem_num);
-void player_game_loop(player_t *player);
+void player_game_loop(player_t *player, int display_mode);
 
 #endif

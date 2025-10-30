@@ -48,18 +48,6 @@ void display_usage(void) {
 	printf("  • Teams: \033[31m1(Red)\033[0m \033[32m2(Green)\033[0m \033[33m3(Yellow)\033[0m \033[34m4(Blue)\033[0m\n\n");
 }
 
-void *display_thread(void *arg) {
-	player_t *player = (player_t *)arg;
-
-	while (!player->game_state->game_over) {
-		display_board(player->game_state, player->sem_id);
-		usleep(1000000);
-	}
-
-	display_board(player->game_state, player->sem_id);
-	printf("Final board state displayed.\n");
-	return NULL;
-}
 
 int main(int argc, char **argv) {
 	if (argc < 2) {
@@ -115,31 +103,12 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 	
-	printf("Player %d placed at position (%d, %d)\n", 
+	printf("Player %d placed at position (%d, %d)\n",
 		   g_player.player_id, g_player.pos.x, g_player.pos.y);
-	
-	if (g_display_mode) {
-		pid_t display_pid = fork();
-		if (display_pid == 0) {
-			while (!g_player.game_state->game_over) {
-				display_board(g_player.game_state, g_player.sem_id);
-				usleep(1000000);
-			}
-			exit(0);
-		} else if (display_pid > 0) {
-			player_game_loop(&g_player);
-			kill(display_pid, SIGTERM);
-			waitpid(display_pid, NULL, 0);
-		} else {
-			perror("fork for display");
-			g_display_mode = 0;
-		}
-	}
-	
-	if (!g_display_mode) {
-		player_game_loop(&g_player);
-	}
-	
+
+	// Run game loop with or without display
+	player_game_loop(&g_player, g_display_mode);
+
 	cleanup_ipc(&g_player);
 	return 0;
 }
