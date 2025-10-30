@@ -50,13 +50,13 @@ void display_usage(void) {
 
 void *display_thread(void *arg) {
 	player_t *player = (player_t *)arg;
-	
+
 	while (!player->game_state->game_over) {
-		display_board(player->game_state);
+		display_board(player->game_state, player->sem_id);
 		usleep(1000000);
 	}
-	
-	display_board(player->game_state);
+
+	display_board(player->game_state, player->sem_id);
 	printf("Final board state displayed.\n");
 	return NULL;
 }
@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
 		pid_t display_pid = fork();
 		if (display_pid == 0) {
 			while (!g_player.game_state->game_over) {
-				display_board(g_player.game_state);
+				display_board(g_player.game_state, g_player.sem_id);
 				usleep(1000000);
 			}
 			exit(0);

@@ -74,10 +74,14 @@ enum actions {
 	ACTION_KILL
 };
 
+// Message types for team coordination
+#define MSG_TYPE_TARGET 1
+#define MSG_TYPE_STATUS 2
+
 void init_ipc(player_t *player);
 void cleanup_ipc(player_t *player);
 void init_board(game_state_t *game_state);
-void display_board(game_state_t *game_state);
+void display_board(game_state_t *game_state, int sem_id);
 int place_player(player_t *player);
 int move_player(player_t *player, int new_x, int new_y);
 int check_kill_condition(player_t *player);

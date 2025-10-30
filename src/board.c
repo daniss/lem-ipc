@@ -29,34 +29,59 @@ void init_board(game_state_t *game_state) {
 	}
 }
 
-void display_board(game_state_t *game_state) {
+void display_board(game_state_t *game_state, int sem_id) {
 	int i, j;
 	// ANSI color codes for different teams
 	const char* team_colors[] = {
 		"\033[37m",  // White for empty
 		"\033[31m",  // Red for team 1
-		"\033[32m",  // Green for team 2  
+		"\033[32m",  // Green for team 2
 		"\033[33m",  // Yellow for team 3
 		"\033[34m"   // Blue for team 4
 	};
 	const char* reset_color = "\033[0m";
-	
+
+	// Lock before reading game state (per FAQ requirement)
+	sem_lock(sem_id, SEM_BOARD);
+
+	// Copy data we need while holding the lock
+	int board_copy[BOARD_SIZE][BOARD_SIZE];
+	int player_count = game_state->player_count;
+	int teams_alive = game_state->teams_alive;
+	int total_kills = game_state->total_kills;
+	int team_counts_copy[MAX_TEAMS + 1];
+	int game_start_time = game_state->game_start_time;
+
+	for (i = 0; i < BOARD_SIZE; i++) {
+		for (j = 0; j < BOARD_SIZE; j++) {
+			board_copy[i][j] = game_state->board[i][j];
+		}
+	}
+
+	int t;
+	for (t = 0; t <= MAX_TEAMS; t++) {
+		team_counts_copy[t] = game_state->team_counts[t];
+	}
+
+	// Release lock - now we can safely display without blocking others
+	sem_unlock(sem_id, SEM_BOARD);
+
+	// Display using copied data (no lock needed for printf)
 	system("clear");
 	printf("\033[1m╔══════════════════════════════════╗\033[0m\n");
 	printf("\033[1m║          Lem-IPC Arena           ║\033[0m\n");
 	printf("\033[1m╚══════════════════════════════════╝\033[0m\n");
-	
-	printf("Players: \033[1m%d\033[0m | Teams alive: \033[1m%d\033[0m | Kills: \033[1m%d\033[0m\n", 
-		   game_state->player_count, game_state->teams_alive, game_state->total_kills);
-	
-	int game_time = time(NULL) - game_state->game_start_time;
+
+	printf("Players: \033[1m%d\033[0m | Teams alive: \033[1m%d\033[0m | Kills: \033[1m%d\033[0m\n",
+		   player_count, teams_alive, total_kills);
+
+	int game_time = time(NULL) - game_start_time;
 	printf("Game time: \033[1m%02d:%02d\033[0m\n", game_time / 60, game_time % 60);
-	
+
 	printf("\nTeam Stats: ");
-	int t;
 	for (t = 1; t <= MAX_TEAMS; t++) {
-		if (game_state->team_counts[t] > 0) {
-			printf("%sTeam %d: %d%s  ", team_colors[t], t, game_state->team_counts[t], reset_color);
+		if (team_counts_copy[t] > 0) {
+			printf("%sTeam %d: %d%s  ", team_colors[t], t, team_counts_copy[t], reset_color);
 		}
 	}
 	printf("\n\nLegend: ");
@@ -65,17 +90,17 @@ void display_board(game_state_t *game_state) {
 		printf("%s● Team %d%s  ", team_colors[t], t, reset_color);
 	}
 	printf("\n\n");
-	
+
 	printf("   ");
 	for (j = 0; j < BOARD_SIZE; j++) {
 		printf("%2d ", j);
 	}
 	printf("\n");
-	
+
 	for (i = 0; i < BOARD_SIZE; i++) {
 		printf("%2d ", i);
 		for (j = 0; j < BOARD_SIZE; j++) {
-			int team = game_state->board[i][j];
+			int team = board_copy[i][j];
 			if (team == EMPTY_CELL) {
 				printf("%s ⋅%s ", team_colors[0], reset_color);
 			} else if (team <= MAX_TEAMS) {
