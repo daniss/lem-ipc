@@ -17,9 +17,8 @@
 #include <sys/wait.h>
 
 #define BOARD_SIZE 10
-#define MAX_TEAMS 4
-#define MAX_PLAYERS_PER_TEAM 10
 #define EMPTY_CELL 0
+#define MAX_TRACKED_TEAMS (BOARD_SIZE * BOARD_SIZE)
 
 #define IPC_KEY_BASE 0x12345
 #define SHM_KEY (IPC_KEY_BASE + 1)
@@ -37,13 +36,12 @@ typedef struct {
 typedef struct {
 	int board[BOARD_SIZE][BOARD_SIZE];
 	int player_count;
-	int teams_alive;
 	int game_over;
-	position_t players[MAX_TEAMS * MAX_PLAYERS_PER_TEAM];
-	int player_teams[MAX_TEAMS * MAX_PLAYERS_PER_TEAM];
-	int team_counts[MAX_TEAMS + 1];
+	int seen_multiple_teams;
 	int total_kills;
 	int game_start_time;
+	int control_pause;
+	int control_tick_ms;
 } game_state_t;
 
 // Message structure for IPC communication
@@ -58,7 +56,8 @@ typedef struct {
 // Player structure containing all player data
 typedef struct {
 	int team;
-	int player_id;
+	int pid;
+	int on_board;
 	position_t pos;
 	int shm_id;
 	int msg_id;
@@ -89,6 +88,6 @@ void remove_player(player_t *player);
 int is_game_over(game_state_t *game_state);
 void sem_lock(int sem_id, int sem_num);
 void sem_unlock(int sem_id, int sem_num);
-void player_game_loop(player_t *player, int display_mode);
+void player_game_loop(player_t *player, int display_mode, int ai_level);
 
 #endif

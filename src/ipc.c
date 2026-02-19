@@ -93,52 +93,30 @@ void init_ipc(player_t *player) {
 }
 
 void cleanup_ipc(player_t *player) {
+	int remaining_players;
+
 	if (player->game_state == NULL) {
 		return; // Already cleaned up
 	}
-	
-	// Use a timeout for semaphore operations to avoid hanging
-	struct timespec timeout;
-	clock_gettime(CLOCK_REALTIME, &timeout);
-	timeout.tv_sec += 5; // 5 second timeout
-	
-	struct sembuf sb = {SEM_BOARD, -1, 0};
-	if (semtimedop(player->sem_id, &sb, 1, &timeout) == 0) {
-		// Don't decrement again - remove_player already did this!
-		int remaining_players = player->game_state->player_count;
-		
-		struct sembuf sb_unlock = {SEM_BOARD, 1, 0};
-		semop(player->sem_id, &sb_unlock, 1);
-		
-		if (shmdt(player->game_state) == -1) {
-			perror("shmdt");
+
+	sem_lock(player->sem_id, SEM_BOARD);
+	remaining_players = player->game_state->player_count;
+	sem_unlock(player->sem_id, SEM_BOARD);
+
+	if (shmdt(player->game_state) == -1) {
+		perror("shmdt");
+	}
+	player->game_state = NULL;
+
+	if (remaining_players == 0) {
+		if (shmctl(player->shm_id, IPC_RMID, NULL) == -1) {
+			perror("shmctl remove");
 		}
-		player->game_state = NULL;
-		
-		if (remaining_players == 0) {
-			// Small delay to ensure other processes have detached
-			usleep(100000); // 100ms
-			
-			if (shmctl(player->shm_id, IPC_RMID, NULL) == -1) {
-				perror("shmctl remove");
-			}
-			if (msgctl(player->msg_id, IPC_RMID, NULL) == -1) {
-				perror("msgctl remove");
-			}
-			if (semctl(player->sem_id, 0, IPC_RMID) == -1) {
-				perror("semctl remove");
-			}
+		if (msgctl(player->msg_id, IPC_RMID, NULL) == -1) {
+			perror("msgctl remove");
 		}
-	} else {
-		// Timeout or error - force cleanup if we're likely the last process
-		if (shmdt(player->game_state) == -1) {
-			perror("shmdt");
+		if (semctl(player->sem_id, 0, IPC_RMID) == -1) {
+			perror("semctl remove");
 		}
-		player->game_state = NULL;
-		
-		// Attempt cleanup anyway - if it fails, resources might be already cleaned
-		shmctl(player->shm_id, IPC_RMID, NULL);
-		msgctl(player->msg_id, IPC_RMID, NULL);
-		semctl(player->sem_id, 0, IPC_RMID);
 	}
 }

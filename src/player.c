@@ -56,7 +56,7 @@ static void send_target_message(player_t *player, position_t target, int target_
 	message_t msg;
 	msg.msg_type = player->team;
 	msg.team = target_team;
-	msg.player_id = player->player_id;
+	msg.player_id = player->pid;
 	msg.pos = target;
 	msg.action = ACTION_MOVE;
 
@@ -187,30 +187,35 @@ static position_t get_move_toward_target(player_t *player, position_t target) {
 static position_t get_intelligent_move(player_t *player) {
 	position_t target;
 	int target_team = 0;
+	position_t result;
+	result.x = -1;
+	result.y = -1;
+
+	sem_lock(player->sem_id, SEM_BOARD);
 
 	// Check for team-coordinated targets via message queue
 	if (receive_target_message(player, &target, &target_team)) {
 		// Validate target still exists on board
-		sem_lock(player->sem_id, SEM_BOARD);
 		int target_still_there = (target.x >= 0 && target.x < BOARD_SIZE &&
 								  target.y >= 0 && target.y < BOARD_SIZE &&
 								  player->game_state->board[target.x][target.y] == target_team);
-		sem_unlock(player->sem_id, SEM_BOARD);
 
 		if (target_still_there) {
 			// Move toward coordinated target
-			return get_move_toward_target(player, target);
+			result = get_move_toward_target(player, target);
+			sem_unlock(player->sem_id, SEM_BOARD);
+			return result;
 		}
 	}
 
 	// No coordinated target - find nearest enemy
-	sem_lock(player->sem_id, SEM_BOARD);
 	int enemy_team = 0;
 	target = find_nearest_enemy(player, &enemy_team);
 
 	if (target.x != -1) {
 		// Found an enemy - broadcast to team for coordination
 		int nearby_teammates = count_nearby_teammates(player, player->pos.x, player->pos.y, 3);
+		result = get_move_toward_target(player, target);
 		sem_unlock(player->sem_id, SEM_BOARD);
 
 		// Broadcast target if we have teammates nearby or every few moves
@@ -219,9 +224,8 @@ static position_t get_intelligent_move(player_t *player) {
 		}
 
 		// Move toward enemy
-		return get_move_toward_target(player, target);
+		return result;
 	}
-	sem_unlock(player->sem_id, SEM_BOARD);
 
 	// No enemies found - make safe random move using ONLY 4 directions
 	position_t moves[MOVE_DIRECTIONS];
@@ -241,10 +245,10 @@ static position_t get_intelligent_move(player_t *player) {
 		}
 	}
 
-	position_t result;
 	if (valid_moves > 0) {
 		int choice = rand() % valid_moves;
 		result = moves[choice];
+		sem_unlock(player->sem_id, SEM_BOARD);
 	} else {
 		// No safe moves - try any move
 		for (i = 0; i < MOVE_DIRECTIONS; i++) {
@@ -255,22 +259,52 @@ static position_t get_intelligent_move(player_t *player) {
 				player->game_state->board[nx][ny] == EMPTY_CELL) {
 				result.x = nx;
 				result.y = ny;
+				sem_unlock(player->sem_id, SEM_BOARD);
 				return result;
 			}
 		}
 		// Completely stuck
 		result.x = -1;
 		result.y = -1;
+		sem_unlock(player->sem_id, SEM_BOARD);
 	}
 
 	return result;
 }
 
-void player_game_loop(player_t *player, int display_mode) {
+void player_game_loop(player_t *player, int display_mode, int ai_level) {
 	int move_counter = 0;
 	int killed = 0;
+	int move_period = (ai_level == 2) ? 3 : 5;
 
-	while (!player->game_state->game_over && !killed) {
+	while (!killed) {
+		int game_over;
+		int paused;
+		int tick_ms;
+
+		sem_lock(player->sem_id, SEM_BOARD);
+		game_over = player->game_state->game_over;
+		paused = player->game_state->control_pause;
+		tick_ms = player->game_state->control_tick_ms;
+		sem_unlock(player->sem_id, SEM_BOARD);
+		if (game_over) {
+			if (player->on_board) {
+				remove_player(player);
+			}
+			break;
+		}
+
+		if (tick_ms < 50) {
+			tick_ms = 50;
+		} else if (tick_ms > 2000) {
+			tick_ms = 2000;
+		}
+
+		if (paused) {
+			usleep(100000);
+			continue;
+		}
+
 		// Display board periodically if display mode is enabled
 		if (display_mode && (move_counter % 2 == 0)) {
 			display_board(player->game_state, player->sem_id);
@@ -282,19 +316,25 @@ void player_game_loop(player_t *player, int display_mode) {
 			sem_unlock(player->sem_id, SEM_BOARD);
 
 			printf("💀 Player %d from team %d has been eliminated!\n",
-				   player->player_id, player->team);
+				   player->pid, player->team);
 			remove_player(player);
 			killed = 1;
 			break;
 		}
 
+		sem_lock(player->sem_id, SEM_BOARD);
 		if (is_game_over(player->game_state)) {
 			player->game_state->game_over = 1;
+			sem_unlock(player->sem_id, SEM_BOARD);
+			if (player->on_board) {
+				remove_player(player);
+			}
 			break;
 		}
+		sem_unlock(player->sem_id, SEM_BOARD);
 
 		move_counter++;
-		if (move_counter % 5 == 0) {
+		if (move_counter % move_period == 0) {
 			// Use intelligent movement with MSGQ coordination
 			position_t new_pos = get_intelligent_move(player);
 			if (new_pos.x != -1) {
@@ -302,7 +342,7 @@ void player_game_loop(player_t *player, int display_mode) {
 			}
 		}
 
-		usleep(500000);
+		usleep((useconds_t)tick_ms * 1000);
 	}
 
 	// Display final board state if display mode is enabled
@@ -312,6 +352,6 @@ void player_game_loop(player_t *player, int display_mode) {
 
 	if (player->game_state->game_over) {
 		printf("Game over! Player %d from team %d exiting.\n",
-			   player->player_id, player->team);
+			   player->pid, player->team);
 	}
 }
