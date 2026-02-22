@@ -96,7 +96,7 @@ void cleanup_ipc(player_t *player) {
 	int remaining_players;
 
 	if (player->game_state == NULL) {
-		return; // Already cleaned up
+		return;
 	}
 
 	sem_lock(player->sem_id, SEM_BOARD);

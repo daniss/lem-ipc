@@ -60,7 +60,6 @@ static void send_target_message(player_t *player, position_t target, int target_
 	msg.pos = target;
 	msg.action = ACTION_MOVE;
 
-	// Non-blocking send
 	if (msgsnd(player->msg_id, &msg, sizeof(msg) - sizeof(long), IPC_NOWAIT) == -1) {
 		if (errno != EAGAIN) {
 			perror("msgsnd");
@@ -68,11 +67,9 @@ static void send_target_message(player_t *player, position_t target, int target_
 	}
 }
 
-// Receive target from team (non-blocking)
 static int receive_target_message(player_t *player, position_t *target, int *target_team) {
 	message_t msg;
 
-	// Non-blocking receive for our team's messages
 	if (msgrcv(player->msg_id, &msg, sizeof(msg) - sizeof(long),
 			   player->team, IPC_NOWAIT) != -1) {
 		*target = msg.pos;
@@ -82,7 +79,6 @@ static int receive_target_message(player_t *player, position_t *target, int *tar
 	return 0;
 }
 
-// Find nearest enemy on the board
 static position_t find_nearest_enemy(player_t *player, int *enemy_team) {
 	position_t nearest;
 	nearest.x = -1;
@@ -94,7 +90,6 @@ static position_t find_nearest_enemy(player_t *player, int *enemy_team) {
 		for (j = 0; j < BOARD_SIZE; j++) {
 			int cell_team = player->game_state->board[i][j];
 			if (cell_team != EMPTY_CELL && cell_team != player->team) {
-				// Manhattan distance
 				int dist = abs(i - player->pos.x) + abs(j - player->pos.y);
 				if (dist < min_distance) {
 					min_distance = dist;
@@ -109,7 +104,6 @@ static position_t find_nearest_enemy(player_t *player, int *enemy_team) {
 	return nearest;
 }
 
-// Count teammates near a position
 static int count_nearby_teammates(player_t *player, int x, int y, int radius) {
 	int count = 0;
 	int i, j;
@@ -128,12 +122,10 @@ static int count_nearby_teammates(player_t *player, int x, int y, int radius) {
 	return count;
 }
 
-// Check if moving to position is safe (won't get killed)
 static int is_safe_move(player_t *player, int x, int y) {
 	return count_adjacent_enemies(player, x, y) < 2;
 }
 
-// Calculate next move toward target position
 static position_t get_move_toward_target(player_t *player, position_t target) {
 	position_t best_move;
 	best_move.x = -1;
@@ -141,7 +133,6 @@ static position_t get_move_toward_target(player_t *player, position_t target) {
 	int min_distance = BOARD_SIZE * BOARD_SIZE + 1;
 	int i;
 
-	// Try all 4 valid directions
 	for (i = 0; i < MOVE_DIRECTIONS; i++) {
 		int nx = player->pos.x + MOVE_DX[i];
 		int ny = player->pos.y + MOVE_DY[i];
@@ -149,10 +140,8 @@ static position_t get_move_toward_target(player_t *player, position_t target) {
 		if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE &&
 			player->game_state->board[nx][ny] == EMPTY_CELL) {
 
-			// Calculate distance to target
 			int dist = abs(nx - target.x) + abs(ny - target.y);
 
-			// Prefer moves that get closer to target AND are safe
 			if (dist < min_distance && is_safe_move(player, nx, ny)) {
 				min_distance = dist;
 				best_move.x = nx;
@@ -161,7 +150,6 @@ static position_t get_move_toward_target(player_t *player, position_t target) {
 		}
 	}
 
-	// If no safe move found, try any move toward target
 	if (best_move.x == -1) {
 		min_distance = BOARD_SIZE * BOARD_SIZE + 1;
 		for (i = 0; i < MOVE_DIRECTIONS; i++) {
@@ -183,7 +171,6 @@ static position_t get_move_toward_target(player_t *player, position_t target) {
 	return best_move;
 }
 
-// Intelligent move using team coordination via MSGQ
 static position_t get_intelligent_move(player_t *player) {
 	position_t target;
 	int target_team = 0;
@@ -193,41 +180,33 @@ static position_t get_intelligent_move(player_t *player) {
 
 	sem_lock(player->sem_id, SEM_BOARD);
 
-	// Check for team-coordinated targets via message queue
 	if (receive_target_message(player, &target, &target_team)) {
-		// Validate target still exists on board
 		int target_still_there = (target.x >= 0 && target.x < BOARD_SIZE &&
 								  target.y >= 0 && target.y < BOARD_SIZE &&
 								  player->game_state->board[target.x][target.y] == target_team);
 
 		if (target_still_there) {
-			// Move toward coordinated target
 			result = get_move_toward_target(player, target);
 			sem_unlock(player->sem_id, SEM_BOARD);
 			return result;
 		}
 	}
 
-	// No coordinated target - find nearest enemy
 	int enemy_team = 0;
 	target = find_nearest_enemy(player, &enemy_team);
 
 	if (target.x != -1) {
-		// Found an enemy - broadcast to team for coordination
 		int nearby_teammates = count_nearby_teammates(player, player->pos.x, player->pos.y, 3);
 		result = get_move_toward_target(player, target);
 		sem_unlock(player->sem_id, SEM_BOARD);
 
-		// Broadcast target if we have teammates nearby or every few moves
 		if (nearby_teammates > 0 || (rand() % 3 == 0)) {
 			send_target_message(player, target, enemy_team);
 		}
 
-		// Move toward enemy
 		return result;
 	}
 
-	// No enemies found - make safe random move using ONLY 4 directions
 	position_t moves[MOVE_DIRECTIONS];
 	int valid_moves = 0;
 	int i;
@@ -250,7 +229,6 @@ static position_t get_intelligent_move(player_t *player) {
 		result = moves[choice];
 		sem_unlock(player->sem_id, SEM_BOARD);
 	} else {
-		// No safe moves - try any move
 		for (i = 0; i < MOVE_DIRECTIONS; i++) {
 			int nx = player->pos.x + MOVE_DX[i];
 			int ny = player->pos.y + MOVE_DY[i];
@@ -263,7 +241,6 @@ static position_t get_intelligent_move(player_t *player) {
 				return result;
 			}
 		}
-		// Completely stuck
 		result.x = -1;
 		result.y = -1;
 		sem_unlock(player->sem_id, SEM_BOARD);
@@ -272,10 +249,10 @@ static position_t get_intelligent_move(player_t *player) {
 	return result;
 }
 
-void player_game_loop(player_t *player, int display_mode, int ai_level) {
+void player_game_loop(player_t *player, int display_mode) {
 	int move_counter = 0;
 	int killed = 0;
-	int move_period = (ai_level == 2) ? 3 : 5;
+	int move_period = 5;
 
 	while (!killed) {
 		int game_over;
@@ -305,7 +282,6 @@ void player_game_loop(player_t *player, int display_mode, int ai_level) {
 			continue;
 		}
 
-		// Display board periodically if display mode is enabled
 		if (display_mode && (move_counter % 2 == 0)) {
 			display_board(player->game_state, player->sem_id);
 		}
@@ -335,7 +311,6 @@ void player_game_loop(player_t *player, int display_mode, int ai_level) {
 
 		move_counter++;
 		if (move_counter % move_period == 0) {
-			// Use intelligent movement with MSGQ coordination
 			position_t new_pos = get_intelligent_move(player);
 			if (new_pos.x != -1) {
 				move_player(player, new_pos.x, new_pos.y);
@@ -345,7 +320,6 @@ void player_game_loop(player_t *player, int display_mode, int ai_level) {
 		usleep((useconds_t)tick_ms * 1000);
 	}
 
-	// Display final board state if display mode is enabled
 	if (display_mode) {
 		display_board(player->game_state, player->sem_id);
 	}

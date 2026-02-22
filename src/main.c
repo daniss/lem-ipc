@@ -2,7 +2,6 @@
 
 static player_t g_player;
 static int g_display_mode = 0;
-static int g_ai_level = 1;
 
 void signal_handler(int sig) {
 	printf("\nReceived signal %d, cleaning up...\n", sig);
@@ -20,29 +19,27 @@ void setup_signal_handlers(void) {
 }
 
 void display_usage(void) {
-	printf("\033[1m╔══════════════════════════════════╗\033[0m\n");
-	printf("\033[1m║         Lem-IPC Game             ║\033[0m\n");
-	printf("\033[1m╚══════════════════════════════════╝\033[0m\n\n");
+	printf("╔══════════════════════════════════╗\n");
+	printf("║             Lem-IPC              ║\n");
+	printf("╚══════════════════════════════════╝\n\n");
 	
-	printf("\033[1mUSAGE:\033[0m\n");
+	printf("USAGE:\n");
 	printf("  ./lemipc <team_number> [options]\n\n");
 	
-	printf("\033[1mARGUMENTS:\033[0m\n");
+	printf("ARGUMENTS:\n");
 	printf("  team_number    Team number (> 0)\n\n");
 	
-	printf("\033[1mOPTIONS:\033[0m\n");
+	printf("OPTIONS:\n");
 	printf("  -d, --display  Enable real-time board display\n");
-	printf("  --ai <level>   AI level (1 or 2, default: 1)\n");
 	printf("  -h, --help     Show this help message\n");
 	printf("  -v, --version  Show version information\n\n");
 	
-	printf("\033[1mEXAMPLES:\033[0m\n");
+	printf("EXAMPLES:\n");
 	printf("  ./lemipc 1              # Join team 1\n");
 	printf("  ./lemipc 2 -d           # Join team 2 with display\n");
-	printf("  ./lemipc 3 --display    # Join team 3 with display\n");
-	printf("  ./lemipc 7 --ai 2       # Join team 7 with stronger AI\n\n");
+	printf("  ./lemipc 3 --display    # Join team 3 with display\n\n");
 	
-	printf("\033[1mGAME RULES:\033[0m\n");
+	printf("GAME RULES:\n");
 	printf("  • Players battle on a 10x10 board\n");
 	printf("  • Goal: Be the last team standing\n");
 	printf("  • Killed when surrounded by ≥2 enemies\n");
@@ -77,16 +74,6 @@ int main(int argc, char **argv) {
 	for (i = 2; i < argc; i++) {
 		if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--display") == 0) {
 			g_display_mode = 1;
-		} else if (strcmp(argv[i], "--ai") == 0) {
-			if (i + 1 >= argc) {
-				printf("Error: --ai requires a value (1 or 2)\n");
-				return 1;
-			}
-			g_ai_level = atoi(argv[++i]);
-			if (g_ai_level < 1 || g_ai_level > 2) {
-				printf("Error: AI level must be 1 or 2\n");
-				return 1;
-			}
 		} else {
 			printf("Unknown option: %s\n", argv[i]);
 			display_usage();
@@ -96,7 +83,6 @@ int main(int argc, char **argv) {
 	
 	srand(time(NULL) + getpid());
 	
-	// Initialize player structure
 	memset(&g_player, 0, sizeof(player_t));
 	g_player.team = team;
 	g_player.pid = getpid();
@@ -119,7 +105,7 @@ int main(int argc, char **argv) {
 	printf("Player %d placed at position (%d, %d)\n",
 		   g_player.pid, g_player.pos.x, g_player.pos.y);
 
-	player_game_loop(&g_player, g_display_mode, g_ai_level);
+	player_game_loop(&g_player, g_display_mode);
 
 	cleanup_ipc(&g_player);
 	return 0;
