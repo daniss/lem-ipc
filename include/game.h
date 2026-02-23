@@ -44,7 +44,6 @@ typedef struct {
 	int control_tick_ms;
 } game_state_t;
 
-// Message structure for IPC communication
 typedef struct {
 	long msg_type;
 	int team;
@@ -53,7 +52,6 @@ typedef struct {
 	int action;
 } message_t;
 
-// Player structure containing all player data
 typedef struct {
 	int team;
 	int pid;
@@ -65,7 +63,6 @@ typedef struct {
 	game_state_t *game_state;
 } player_t;
 
-// Action types for messages
 enum actions {
 	ACTION_JOIN = 1,
 	ACTION_MOVE,
@@ -73,7 +70,6 @@ enum actions {
 	ACTION_KILL
 };
 
-// Message types for team coordination
 #define MSG_TYPE_TARGET 1
 #define MSG_TYPE_STATUS 2
 
