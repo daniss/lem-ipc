@@ -64,14 +64,8 @@ typedef struct {
 } player_t;
 
 enum actions {
-	ACTION_JOIN = 1,
-	ACTION_MOVE,
-	ACTION_LEAVE,
-	ACTION_KILL
+	ACTION_MOVE
 };
-
-#define MSG_TYPE_TARGET 1
-#define MSG_TYPE_STATUS 2
 
 void init_ipc(player_t *player);
 void cleanup_ipc(player_t *player);
